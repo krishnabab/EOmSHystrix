@@ -25,22 +25,23 @@ public class EOController {
 	public String createOrder() throws Exception {
 		
 		String resp = null;
+		resp = callmS.callEOV();
 		/*
 		 *  Now check the circuit is open or not ?
 		 *  if circuit is open dont execute write to DB operation
-		 */
+		 
 		if (metricsService.isMyCircuitOpen(HystrixCommandKey.Factory.asKey("eovCommand"))) {
-			/*
-			 * You should have a scheduler service which will try EOV calls in the background
-			 */
+			
+			// You should have a scheduler service which will try EOV calls in the background
+			 
 			resp = "Network glitch!! we r working , please re-try after some time";
 			System.out.println("Circuit is open and something is not good ! Can't write into DB");
 		}
 		else {
-			/* Circuit is not open , so please write to DB and proceed with notmal flow */ 
+			 //Circuit is not open , so please write to DB and proceed with notmal flow  
 			System.out.println("Step -1 : DB Record created");
 			resp = callmS.callEOV();
-		}
+		}*/
 		return resp;
 	}
 	
@@ -56,7 +57,7 @@ public class EOController {
      	callmS.callEOV();
     }
 	
-	@Scheduled(cron ="${callEOVCron.expression}")
+	//@Scheduled(cron ="${callEOVCron.expression}")
 	public void processDBRecords() throws Exception {
 	   System.out.println("Processing DB Records");
 	   callmS.callEOV();
