@@ -1,86 +1,79 @@
 package com.krish.hystrix.enterprise.order;
 
-import java.io.IOException;
-import java.util.concurrent.TimeoutException;
 
 import javax.ws.rs.InternalServerErrorException;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.circuitbreaker.EnableCircuitBreaker;
 import org.springframework.cloud.netflix.hystrix.EnableHystrix;
 import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
+import org.springframework.cloud.sleuth.sampler.AlwaysSampler;
+import org.springframework.context.annotation.Bean;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
-import com.netflix.hystrix.HystrixCircuitBreaker;
-import com.netflix.hystrix.HystrixCommandKey;
-import com.netflix.hystrix.HystrixCommandMetrics;
 import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
 import com.netflix.hystrix.contrib.javanica.annotation.HystrixProperty;
 import com.netflix.hystrix.exception.HystrixBadRequestException;
-import com.netflix.hystrix.strategy.HystrixPlugins;
-import com.netflix.hystrix.strategy.eventnotifier.HystrixEventNotifier;
-import com.netflix.hystrix.strategy.metrics.HystrixMetricsPublisher;
 
 @EnableHystrix
 @EnableCircuitBreaker
 @EnableHystrixDashboard
 @Service
 public class CallMicroServices {
+	
+	@Autowired
+    RestTemplate restTemplate;
+ 
+    @Bean
+    public RestTemplate getRestTemplate() {
+        return new RestTemplate();
+    }
+ 
+    @Bean
+    public AlwaysSampler alwaysSampler() {
+        return new AlwaysSampler();
+    }
 
 	@Value("${eov.url}")
 	private String eovURL;
 	
-	private static final Logger log = LoggerFactory.getLogger(CallMicroServices.class);
+	private static final Logger log = LoggerFactory.getLogger(CallMicroServices.class.getName());
 
 	
-	@HystrixCommand(fallbackMethod = "fallBack4Retry", commandKey = "eovCommand",commandProperties = {
-			@HystrixProperty(name="execution.timeout.enabled",value="false"),
+	@HystrixCommand(threadPoolKey="thread", fallbackMethod = "fallBack4Retry", commandKey = "eovCommand",commandProperties = {
+			@HystrixProperty(name="execution.isolation.strategy", value="SEMAPHORE"),
 			@HystrixProperty(name="execution.isolation.semaphore.maxConcurrentRequests", value= "200"),
-			@HystrixProperty(name="execution.isolation.thread.timeoutInMilliseconds", value="600000"),
-			@HystrixProperty(name="execution.isolation.strategy", value="SEMAPHORE"),	
-			@HystrixProperty(name="fallback.enabled", value="true"),
-			@HystrixProperty(name="fallback.isolation.semaphore.maxConcurrentRequests", value="100"),
-			@HystrixProperty(name="circuitBreaker.enabled", value="true"),
-			@HystrixProperty(name="circuitBreaker.requestVolumeThreshold", value="2"),
-			@HystrixProperty(name="circuitBreaker.sleepWindowInMilliseconds", value="5000"),
-			@HystrixProperty(name="circuitBreaker.errorThresholdPercentage", value="50"),
+			@HystrixProperty(name="execution.timeout.enabled",value="false"),
+			@HystrixProperty(name="circuitBreaker.errorThresholdPercentage", value="2"),
+			@HystrixProperty(name="circuitBreaker.requestVolumeThreshold",value="5")
 	})
-	/*
-	 * @HystrixProperty(name="circuitBreaker.errorThresholdPercentage", value="20")
-	 * Over 20 % failure rate in 10 sec period, open breaker
-	 * 
-	 * @HystrixProperty(name="circuitBreaker.sleepWindowInMilliseconds",
-	 * value="1000") After 1 second , close the circuit breaker
-	 * 
-	 * @HystrixCommand(fallbackMethod = "autoValidate", commandProperties = {
-	 * 
-	 * @HystrixProperty(name = "circuitBreaker.errorThresholdPercentage", value =
-	 * "20"),
-	 * 
-	 * @HystrixProperty(name = "circuitBreaker.sleepWindowInMilliseconds", value =
-	 * "1000") })
-	 */
 	public String callEOV() throws Exception {
 		String response = "Order not completed";
+		String response2 = null;
 		try {
 			log.info("in EO and calling EOV mS: " + System.currentTimeMillis());
+			
 			//int temp = 9/0; // to create ArithmeticException
 			//generate runtime exception
 			//int s[] = {1,2};
 			//System.out.println("dddd"+s[3]);
-			HttpUriRequest request = new HttpGet(eovURL);
-			//RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1 * 500).build();
-			//HttpResponse httpResponse = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build().execute(request);
+			/*HttpUriRequest request = new HttpGet(eovURL);
+			RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1 * 500).build();
+			HttpResponse httpResponse = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build().execute(request);
 			HttpResponse httpResponse = HttpClientBuilder.create().build().execute(request);
-			response = EntityUtils.toString(httpResponse.getEntity());
+			response = EntityUtils.toString(httpResponse.getEntity());*/
+			response2 = (String) restTemplate.exchange(eovURL,HttpMethod.GET, null, new ParameterizedTypeReference<String>() {}).getBody();
 		} catch(ArithmeticException ae) {
 			throw new HystrixBadRequestException(ae.getMessage()); 
 			/*
@@ -97,11 +90,11 @@ public class CallMicroServices {
 			throw e;
 		}
 		
-		if (response.contains("Validated"))
-			response = "Order Created and completed!!";
+		if (response2.contains("Validated"))
+			response2 = "Order Created and completed!!";
 		else
 			throw new InternalServerErrorException();
-		return response;
+		return response2;
 	}
 
 	public String fallBack4Retry(Throwable e) {
